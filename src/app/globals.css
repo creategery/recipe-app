@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background-color: #fafaf9;
+}
+
+/* smooth scroll for iOS */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* hide scrollbar on tag bar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
