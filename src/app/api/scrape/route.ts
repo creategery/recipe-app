@@ -52,68 +52,92 @@ function extractInstructions(raw: any): string[] {
   return [];
 }
 
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
+};
+
+async function fetchHtml(url: string): Promise<string> {
+  // 1. Direct fetch
+  try {
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(12000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      // Make sure we got actual HTML, not a bot-challenge page
+      if (html.includes('<html') && html.length > 2000) return html;
+    }
+  } catch {
+    // fall through to proxy
+  }
+
+  // 2. AllOrigins proxy fallback (handles many sites that block server-side requests)
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  const proxyRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+  if (!proxyRes.ok) throw new Error(`Could not fetch page (HTTP ${proxyRes.status})`);
+  return proxyRes.text();
+}
+
+function parseHtml(html: string): ScrapedData {
+  const $ = cheerio.load(html);
+  const result: ScrapedData = {};
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const json = JSON.parse($(el).html() || '');
+      const recipe = findRecipe(json);
+      if (recipe && !result.title) {
+        result.title = recipe.name;
+
+        if (recipe.image) {
+          if (typeof recipe.image === 'string') result.image = recipe.image;
+          else if (Array.isArray(recipe.image)) result.image = recipe.image[0];
+          else if (recipe.image?.url) result.image = recipe.image.url;
+        }
+
+        if (recipe.recipeIngredient) {
+          result.ingredients = (recipe.recipeIngredient as string[]).filter(Boolean);
+        }
+
+        result.instructions = extractInstructions(recipe.recipeInstructions);
+
+        const yld = recipe.recipeYield;
+        if (yld) result.servings = (Array.isArray(yld) ? yld[0] : yld).toString();
+
+        result.cookTime = parseIsoDuration(recipe.totalTime || recipe.cookTime || '');
+      }
+    } catch {
+      // malformed JSON-LD, skip
+    }
+  });
+
+  if (!result.image) {
+    result.image =
+      $('meta[property="og:image"]').attr('content') ||
+      $('meta[name="twitter:image"]').attr('content') ||
+      '';
+  }
+  if (!result.title) {
+    result.title =
+      $('meta[property="og:title"]').attr('content') || $('title').text() || '';
+  }
+
+  return result;
+}
+
 export async function POST(req: NextRequest) {
   const { url } = await req.json();
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const result: ScrapedData = {};
-
-    $('script[type="application/ld+json"]').each((_, el) => {
-      try {
-        const json = JSON.parse($(el).html() || '');
-        const recipe = findRecipe(json);
-        if (recipe && !result.title) {
-          result.title = recipe.name;
-
-          if (recipe.image) {
-            if (typeof recipe.image === 'string') result.image = recipe.image;
-            else if (Array.isArray(recipe.image)) result.image = recipe.image[0];
-            else if (recipe.image?.url) result.image = recipe.image.url;
-          }
-
-          if (recipe.recipeIngredient) {
-            result.ingredients = (recipe.recipeIngredient as string[]).filter(Boolean);
-          }
-
-          result.instructions = extractInstructions(recipe.recipeInstructions);
-
-          const yld = recipe.recipeYield;
-          if (yld) {
-            result.servings = (Array.isArray(yld) ? yld[0] : yld).toString();
-          }
-
-          result.cookTime = parseIsoDuration(recipe.totalTime || recipe.cookTime || '');
-        }
-      } catch {
-        // malformed JSON-LD, skip
-      }
-    });
-
-    if (!result.image) {
-      result.image =
-        $('meta[property="og:image"]').attr('content') ||
-        $('meta[name="twitter:image"]').attr('content') ||
-        '';
-    }
-    if (!result.title) {
-      result.title =
-        $('meta[property="og:title"]').attr('content') || $('title').text() || '';
-    }
-
+    const html = await fetchHtml(url);
+    const result = parseHtml(html);
     return NextResponse.json({ success: true, data: result });
   } catch (err) {
     return NextResponse.json(
