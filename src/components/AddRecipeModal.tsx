@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Recipe, RecipeFormData, ScrapedData } from '@/types/recipe';
 
+// Sections that signal the recipe content is over
+const STOP_SECTIONS = /^(nutrition facts?|nutrition info|reviews?|ratings?|comments?|community|ask the|related recipes?|you (may|might) also|more recipes?|about (this|the) recipe|tips?( and tricks)?|did you (make|try)|how did it turn out|advertisement|similar recipes?|popular recipes?)/i;
+
+// Lines that are clearly not recipe steps
+const JUNK_LINE = /(home cooks? made it|dotdash|meredith|allrecipes|food network|serious eats|show full|per serving|nutrition label|\d+ rating|\d+ review|jump to recipe|print recipe|save recipe|pin recipe)/i;
+
 function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientTexts: string[] }> {
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
   const ingredientRx = /^(ingredients?|what you.?ll need|you.?ll need):?$/i;
@@ -19,6 +25,12 @@ function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientText
   let titleSet = false;
 
   for (const line of lines) {
+    // Stop entirely when we hit post-recipe sections
+    if (STOP_SECTIONS.test(line)) break;
+
+    // Skip obvious junk lines
+    if (JUNK_LINE.test(line)) continue;
+
     const timeM = line.match(timeRx);
     if (timeM && !cookTime) { cookTime = timeM[2].trim(); continue; }
     const servM = line.match(servingRx);
@@ -39,7 +51,10 @@ function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientText
     }
     if (mode === 'instructions') {
       const step = line.replace(/^\d+[.)]\s*/, '').trim();
-      if (step.length > 15) instructions.push(step);
+      // Filter out short lines and photo credit lines (e.g. "Dotdash Meredith Food Studios")
+      if (step.length > 30 && !/^[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+$/.test(step)) {
+        instructions.push(step);
+      }
     }
   }
 
