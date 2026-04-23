@@ -260,8 +260,24 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
         body: JSON.stringify({ url: url.trim() }),
       });
       const json = await res.json();
-      if (json.success && json.data.image) {
-        setForm(p => ({ ...p, image: json.data.image }));
+      if (json.success) {
+        const d = json.data;
+        setForm(p => ({
+          ...p,
+          // Always take image if we got one
+          image: d.image || p.image,
+          // Fix title if it's empty or looks like a URL
+          title: (d.title && (!p.title || p.title.startsWith('http'))) ? d.title : p.title,
+          // Fill in empty fields
+          servings: p.servings || d.servings || '',
+          cookTime: p.cookTime || d.cookTime || '',
+          ingredients: (!p.ingredients.length && d.ingredients?.length)
+            ? d.ingredients.map((t: string) => ({ id: newId(), text: t, checked: false }))
+            : p.ingredients,
+          instructions: (!p.instructions.length && d.instructions?.length)
+            ? d.instructions
+            : p.instructions,
+        }));
       }
     } catch {
       // silently fail
