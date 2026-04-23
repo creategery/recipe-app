@@ -52,38 +52,8 @@ function extractInstructions(raw: any): string[] {
   return [];
 }
 
-// For domains that block scraping but have clean print views
-const PRINT_URL_TRANSFORMS: { test: RegExp; transform: (url: string) => string }[] = [
-  {
-    // foodnetwork.com/recipes/... → append /print-page if not already present
-    test: /foodnetwork\.com\/recipes\//,
-    transform: (url) => {
-      const clean = url.replace(/\/print(-page)?\/?$/, '');
-      return clean.replace(/(\?.*)?$/, '/print-page');
-    },
-  },
-  {
-    // allrecipes.com/recipe/... → append /print
-    test: /allrecipes\.com\/recipe\//,
-    transform: (url) => url.replace(/\/print\/?$/, '').replace(/(\?.*)?$/, '/print'),
-  },
-  {
-    // simplyrecipes.com → add ?print=true
-    test: /simplyrecipes\.com/,
-    transform: (url) => {
-      const u = new URL(url);
-      u.searchParams.set('print', 'true');
-      return u.toString();
-    },
-  },
-];
-
-function getPrintUrl(url: string): string | null {
-  for (const { test, transform } of PRINT_URL_TRANSFORMS) {
-    if (test.test(url)) return transform(url);
-  }
-  return null;
-}
+// Sites that reliably block server-side scraping — skip straight to proxy
+const ALWAYS_PROXY = /foodnetwork\.com|nytimes\.com|epicurious\.com|bonappetit\.com/;
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -95,6 +65,8 @@ const BROWSER_HEADERS = {
   Pragma: 'no-cache',
 };
 
+const NOT_FOUND_TITLES = /page not found|404|not found|error/i;
+
 async function tryFetch(url: string, timeout = 12000): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -103,7 +75,11 @@ async function tryFetch(url: string, timeout = 12000): Promise<string | null> {
     });
     if (res.ok) {
       const html = await res.text();
-      if (html.includes('<html') && html.length > 2000) return html;
+      if (!html.includes('<html') || html.length < 2000) return null;
+      // Reject 404/error pages served with 200 status
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      if (titleMatch && NOT_FOUND_TITLES.test(titleMatch[1])) return null;
+      return html;
     }
   } catch {
     // ignore
@@ -112,23 +88,22 @@ async function tryFetch(url: string, timeout = 12000): Promise<string | null> {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  // 1. Try print URL first for known domains (cleaner HTML, less bot-blocking)
-  const printUrl = getPrintUrl(url);
-  if (printUrl) {
-    const html = await tryFetch(printUrl);
-    if (html) return html;
+  // 1. Skip direct fetch for known bot-blocking domains
+  if (!ALWAYS_PROXY.test(url)) {
+    const direct = await tryFetch(url);
+    if (direct) return direct;
   }
 
-  // 2. Direct fetch of original URL
-  const direct = await tryFetch(url);
-  if (direct) return direct;
-
-  // 3. AllOrigins proxy fallback — try print URL through proxy first if available
-  const proxyTarget = printUrl ?? url;
-  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(proxyTarget)}`;
+  // 2. AllOrigins proxy fallback
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
   const proxyRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
   if (!proxyRes.ok) throw new Error(`Could not fetch page (HTTP ${proxyRes.status})`);
-  return proxyRes.text();
+  const html = await proxyRes.text();
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (titleMatch && NOT_FOUND_TITLES.test(titleMatch[1])) {
+    throw new Error('Page not found — check the URL and try again');
+  }
+  return html;
 }
 
 // Selectors for the main article body on blog-style sites
