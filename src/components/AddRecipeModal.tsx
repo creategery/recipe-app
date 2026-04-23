@@ -126,6 +126,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
   const [pasteText, setPasteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [fetchingImage, setFetchingImage] = useState(false);
+  const [imageFetchError, setImageFetchError] = useState('');
   const [newIngredient, setNewIngredient] = useState('');
   const [newInstruction, setNewInstruction] = useState('');
   const [newTag, setNewTag] = useState('');
@@ -253,6 +254,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
     const url = form.sourceUrl || urlInput;
     if (!url.trim()) return;
     setFetchingImage(true);
+    setImageFetchError('');
     try {
       const res = await fetch('/api/scrape', {
         method: 'POST',
@@ -262,25 +264,32 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
       const json = await res.json();
       if (json.success) {
         const d = json.data;
-        setForm(p => ({
-          ...p,
-          // Always take image if we got one
-          image: d.image || p.image,
-          // Fix title if it's empty or looks like a URL
-          title: (d.title && (!p.title || p.title.startsWith('http'))) ? d.title : p.title,
-          // Fill in empty fields
-          servings: p.servings || d.servings || '',
-          cookTime: p.cookTime || d.cookTime || '',
-          ingredients: (!p.ingredients.length && d.ingredients?.length)
-            ? d.ingredients.map((t: string) => ({ id: newId(), text: t, checked: false }))
-            : p.ingredients,
-          instructions: (!p.instructions.length && d.instructions?.length)
-            ? d.instructions
-            : p.instructions,
-        }));
+        const gotSomething = d.image || d.title || d.ingredients?.length;
+        if (!gotSomething) {
+          const isBlocked = /nytimes|epicurious|bonappetit/i.test(url);
+          setImageFetchError(isBlocked
+            ? 'This site blocks fetching. Use the browser extension on the recipe page instead.'
+            : 'Nothing found at that URL.');
+        } else {
+          setForm(p => ({
+            ...p,
+            image: d.image || p.image,
+            title: (d.title && (!p.title || p.title.startsWith('http'))) ? d.title : p.title,
+            servings: p.servings || d.servings || '',
+            cookTime: p.cookTime || d.cookTime || '',
+            ingredients: (!p.ingredients.length && d.ingredients?.length)
+              ? d.ingredients.map((t: string) => ({ id: newId(), text: t, checked: false }))
+              : p.ingredients,
+            instructions: (!p.instructions.length && d.instructions?.length)
+              ? d.instructions
+              : p.instructions,
+          }));
+        }
+      } else {
+        setImageFetchError('Could not reach that URL.');
       }
     } catch {
-      // silently fail
+      setImageFetchError('Network error.');
     } finally {
       setFetchingImage(false);
     }
@@ -434,6 +443,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
                 </button>
               )}
             </div>
+            {imageFetchError && <p className="text-xs text-red-500 mt-1.5">{imageFetchError}</p>}
           </div>
 
           {/* Title */}
