@@ -3,32 +3,34 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Recipe, RecipeFormData, ScrapedData } from '@/types/recipe';
 
-// Sections that signal the recipe content is over
-const STOP_SECTIONS = /^(nutrition facts?|nutrition info|reviews?|ratings?|comments?|community|ask the|related recipes?|you (may|might) also|more recipes?|about (this|the) recipe|tips?( and tricks)?|did you (make|try)|how did it turn out|advertisement|similar recipes?|popular recipes?)/i;
+// Stop parsing when we hit these sections
+const STOP_SECTIONS = /^(nutrition facts?|nutrition info|reviews?|ratings?|comments?|community|ask the|related recipes?|you (may|might) also|more recipes?|about (this|the) recipe|did you (make|try)|how did it turn out|advertisement|similar recipes?|popular recipes?|most.saved|you.ll also love|most helpful)/i;
 
-// Lines that are clearly not recipe steps
-const JUNK_LINE = /(home cooks? made it|dotdash|meredith|allrecipes|food network|serious eats|show full|per serving|nutrition label|\d+ rating|\d+ review|jump to recipe|print recipe|save recipe|pin recipe)/i;
+// Lines to skip entirely
+const JUNK_LINE = /(home cooks? made it|dotdash|meredith food studio|allrecipes|food network|serious eats|show full|nutrition label|\d+ rating|\d+ review|jump to|print recipe|save recipe|pin recipe|keep screen awake|submitted by|updated on|get the magazine|why you.ll love|read more|i made it|add photo)/i;
 
-function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientTexts: string[] }> {
+// Image captions between Allrecipes steps (start with "A/An" + capital, or "Ingredients to")
+const IMAGE_CAPTION = /^(A |An )[A-Z]|^Ingredients to |^Original recipe/i;
+
+function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientTexts: string[], parsedNotes: string }> {
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
   const ingredientRx = /^(ingredients?|what you.?ll need|you.?ll need):?$/i;
   const instructionRx = /^(instructions?|directions?|method|preparation|how to (make|cook)|steps?):?$/i;
+  const noteRx = /^(cook.?s? notes?|note|tips?|chef.?s? notes?):?$/i;
   const timeRx = /^(total time|cook time|prep time|time):?\s*(.+)/i;
   const servingRx = /^(yield|serves?|servings?|makes?):?\s*(.+)/i;
 
   let title = '';
   let ingredientTexts: string[] = [];
   let instructions: string[] = [];
+  let notes: string[] = [];
   let cookTime = '';
   let servings = '';
-  let mode: 'unknown' | 'ingredients' | 'instructions' = 'unknown';
+  let mode: 'unknown' | 'ingredients' | 'instructions' | 'notes' = 'unknown';
   let titleSet = false;
 
   for (const line of lines) {
-    // Stop entirely when we hit post-recipe sections
     if (STOP_SECTIONS.test(line)) break;
-
-    // Skip obvious junk lines
     if (JUNK_LINE.test(line)) continue;
 
     const timeM = line.match(timeRx);
@@ -37,40 +39,41 @@ function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientText
     if (servM && !servings) { servings = servM[2].trim(); continue; }
     if (ingredientRx.test(line)) { mode = 'ingredients'; continue; }
     if (instructionRx.test(line)) { mode = 'instructions'; continue; }
+    if (noteRx.test(line)) { mode = 'notes'; continue; }
 
     if (!titleSet && mode === 'unknown' && line.length > 3 && line.length < 120) {
       title = line.replace(/^#+ /, '');
       titleSet = true;
       continue;
     }
+
     if (mode === 'ingredients') {
       const isIngredient =
-        // Must start with a number or fraction character
         (/^[\d½¼¾⅓⅔⅛⅜⅝⅞]/.test(line) ||
          /^(a |an |one |two |three |four |five |six |pinch|dash|handful|small|large|medium)/i.test(line)) &&
-        // Must contain a food/unit word — not just a bare number or time/multiplier
         /[a-zA-Z]{2,}/.test(line) &&
-        // Exclude time values like "5 mins", "4 hrs 20 mins"
         !/^\d[\d\s]*(min|hour|hr|sec)/i.test(line) &&
-        // Exclude multipliers like "1x", "2x", "1/2x"
         !/^[\d./]+x$/i.test(line) &&
-        // Exclude standalone numbers or ratings like "4.8", "108"
         !/^\d+(\.\d+)?$/.test(line) &&
-        // Must be a reasonable ingredient length
         line.length > 3;
-
       if (isIngredient) ingredientTexts.push(line);
     }
+
     if (mode === 'instructions') {
+      // Skip image captions and photo credits
+      if (IMAGE_CAPTION.test(line)) continue;
+      // Skip studio/credit lines (3-4 capitalized words)
+      if (/^([A-Z][a-zA-Z]+ ){2,3}[A-Z][a-zA-Z]+$/.test(line)) continue;
       const step = line.replace(/^\d+[.)]\s*/, '').trim();
-      // Filter out short lines and photo credit lines (e.g. "Dotdash Meredith Food Studios")
-      if (step.length > 30 && !/^[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+$/.test(step)) {
-        instructions.push(step);
-      }
+      if (step.length > 20) instructions.push(step);
+    }
+
+    if (mode === 'notes') {
+      if (line.length > 10) notes.push(line);
     }
   }
 
-  return { title, ingredientTexts, instructions, cookTime, servings };
+  return { title, ingredientTexts, instructions, cookTime, servings, parsedNotes: notes.join('\n') };
 }
 
 const DEFAULT_TAGS = [
@@ -164,6 +167,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
       title: parsed.title || prev.title,
       cookTime: parsed.cookTime || prev.cookTime,
       servings: parsed.servings || prev.servings,
+      notes: parsed.parsedNotes || prev.notes,
       ingredients: parsed.ingredientTexts?.length
         ? parsed.ingredientTexts.map(t => ({ id: newId(), text: t, checked: false }))
         : prev.ingredients,
