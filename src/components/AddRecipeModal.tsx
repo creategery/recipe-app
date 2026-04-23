@@ -3,6 +3,49 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Recipe, RecipeFormData, ScrapedData } from '@/types/recipe';
 
+function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientTexts: string[] }> {
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const ingredientRx = /^(ingredients?|what you.?ll need|you.?ll need):?$/i;
+  const instructionRx = /^(instructions?|directions?|method|preparation|how to (make|cook)|steps?):?$/i;
+  const timeRx = /^(total time|cook time|prep time|time):?\s*(.+)/i;
+  const servingRx = /^(yield|serves?|servings?|makes?):?\s*(.+)/i;
+
+  let title = '';
+  let ingredientTexts: string[] = [];
+  let instructions: string[] = [];
+  let cookTime = '';
+  let servings = '';
+  let mode: 'unknown' | 'ingredients' | 'instructions' = 'unknown';
+  let titleSet = false;
+
+  for (const line of lines) {
+    const timeM = line.match(timeRx);
+    if (timeM && !cookTime) { cookTime = timeM[2].trim(); continue; }
+    const servM = line.match(servingRx);
+    if (servM && !servings) { servings = servM[2].trim(); continue; }
+    if (ingredientRx.test(line)) { mode = 'ingredients'; continue; }
+    if (instructionRx.test(line)) { mode = 'instructions'; continue; }
+
+    if (!titleSet && mode === 'unknown' && line.length > 3 && line.length < 120) {
+      title = line.replace(/^#+ /, '');
+      titleSet = true;
+      continue;
+    }
+    if (mode === 'ingredients') {
+      if (/^[\d½¼¾⅓⅔⅛⅜⅝⅞]/.test(line) ||
+          /^(a |an |one |two |three |four |five |six |pinch|dash|handful|small|large|medium)/i.test(line)) {
+        ingredientTexts.push(line);
+      }
+    }
+    if (mode === 'instructions') {
+      const step = line.replace(/^\d+[.)]\s*/, '').trim();
+      if (step.length > 15) instructions.push(step);
+    }
+  }
+
+  return { title, ingredientTexts, instructions, cookTime, servings };
+}
+
 const DEFAULT_TAGS = [
   'Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Snack', 'Appetizer',
   'Mexican', 'Italian', 'Asian', 'American', 'Mediterranean', 'Indian',
@@ -40,6 +83,8 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
   const [urlInput, setUrlInput] = useState(initialRecipe?.sourceUrl ?? '');
   const [scraping, setScraping] = useState(false);
   const [scrapeError, setScrapeError] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [newIngredient, setNewIngredient] = useState('');
   const [newInstruction, setNewInstruction] = useState('');
@@ -83,6 +128,22 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
     } finally {
       setScraping(false);
     }
+  }
+
+  function applyPaste() {
+    const parsed = parseRecipeText(pasteText);
+    setForm(prev => ({
+      ...prev,
+      title: parsed.title || prev.title,
+      cookTime: parsed.cookTime || prev.cookTime,
+      servings: parsed.servings || prev.servings,
+      ingredients: parsed.ingredientTexts?.length
+        ? parsed.ingredientTexts.map(t => ({ id: newId(), text: t, checked: false }))
+        : prev.ingredients,
+      instructions: parsed.instructions?.length ? parsed.instructions : prev.instructions,
+    }));
+    setPasteText('');
+    setShowPaste(false);
   }
 
   function toggleTag(tag: string) {
@@ -208,9 +269,40 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
             </div>
             {scrapeError && <p className="text-xs text-red-500 mt-1.5">{scrapeError}</p>}
             <p className="text-xs text-stone-400 mt-1">
-              Works on most food blogs. For NYT Cooking, fill in manually below.
+              Works on most food blogs.{' '}
+              <button
+                type="button"
+                onClick={() => setShowPaste(p => !p)}
+                className="text-orange-500 underline"
+              >
+                {showPaste ? 'Hide' : 'NYT or paywalled? Paste the text instead →'}
+              </button>
             </p>
           </section>
+
+          {/* Paste recipe text (NYT etc.) */}
+          {showPaste && (
+            <section className="bg-orange-50 border border-orange-100 rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-700 mb-1">Paste recipe text</p>
+                <p className="text-xs text-stone-500">Copy everything from the recipe page — title, ingredients, instructions — and paste it here. We&apos;ll parse out what we can.</p>
+              </div>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder={"Paste the full recipe text here…\n\nIngredients\n2 cups flour\n1 tsp salt\n…\n\nInstructions\n1. Preheat oven…"}
+                rows={8}
+                className="w-full border border-orange-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 resize-none bg-white"
+              />
+              <button
+                onClick={applyPaste}
+                disabled={!pasteText.trim()}
+                className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                Parse &amp; fill fields
+              </button>
+            </section>
+          )}
 
           {/* Image preview */}
           {form.image && (
