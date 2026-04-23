@@ -1,6 +1,7 @@
 function findRecipe(obj) {
   if (!obj) return null;
-  if (obj['@type'] === 'Recipe') return obj;
+  const type = obj['@type'];
+  if (type === 'Recipe' || (Array.isArray(type) && type.includes('Recipe'))) return obj;
   if (Array.isArray(obj)) {
     for (const item of obj) {
       const found = findRecipe(item);
@@ -103,5 +104,6 @@ function extractRecipeData() {
   return data;
 }
 
-// Extract recipe data on page load
+// Extract at page load, but expose the function so background can re-run it at click time
 window.__recipeData = extractRecipeData();
+window.__extractRecipeData = extractRecipeData;

@@ -14,7 +14,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       function: () => {
-        const recipe = window.__recipeData;
+        // Re-extract at click time in case JSON-LD loaded dynamically after page load
+        const recipe = window.__extractRecipeData ? window.__extractRecipeData() : window.__recipeData;
         if (recipe && (recipe.title || recipe.ingredients.length > 0)) {
           chrome.runtime.sendMessage({
             action: 'openSavePage',
