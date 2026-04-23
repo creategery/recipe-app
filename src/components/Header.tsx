@@ -82,6 +82,12 @@ export default function Header({ searchQuery, onSearchChange, onAddRecipe }: Hea
                   >
                     📋 Import recipes
                   </button>
+                  <button
+                    onClick={() => { setShowMenu(false); router.push('/bookmarklet'); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-stone-600 active:bg-stone-50"
+                  >
+                    🔖 Save bookmarklet
+                  </button>
                   <hr className="border-stone-100" />
                   <button
                     onClick={() => { setShowMenu(false); signOut(); }}
