@@ -46,8 +46,17 @@ function extractRecipeData() {
     const img = recipe.image;
     if (img) {
       if (typeof img === 'string') data.image = img;
-      else if (Array.isArray(img)) data.image = img[0];
-      else if (img.url) data.image = img.url;
+      else if (Array.isArray(img)) {
+        const first = img[0];
+        data.image = typeof first === 'string' ? first : (first?.url || first?.contentUrl || '');
+      } else {
+        data.image = img.url || img.contentUrl || '';
+      }
+    }
+    // Also try og:image as fallback
+    if (!data.image) {
+      const og = document.querySelector('meta[property="og:image"]');
+      if (og) data.image = og.getAttribute('content') || '';
     }
 
     data.ingredients = recipe.recipeIngredient || [];
@@ -72,7 +81,7 @@ function extractRecipeData() {
 
     const duration = recipe.totalTime || recipe.cookTime || '';
     if (duration) {
-      const m = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+      const m = duration.match(/T(?:(\d+)H)?(?:(\d+)M)?/);
       if (m) {
         const h = parseInt(m[1] || '0');
         const min = parseInt(m[2] || '0');

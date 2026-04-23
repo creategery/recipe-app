@@ -4,7 +4,8 @@ import type { ScrapedData } from '@/types/recipe';
 
 function parseIsoDuration(duration?: string): string {
   if (!duration) return '';
-  const m = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+  // Match after the T separator: handles P0Y0M0DT0H40M0.000S and simple PT40M
+  const m = duration.match(/T(?:(\d+)H)?(?:(\d+)M)?/);
   if (!m) return duration;
   const h = parseInt(m[1] || '0');
   const min = parseInt(m[2] || '0');
