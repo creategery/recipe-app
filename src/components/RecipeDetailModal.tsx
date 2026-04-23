@@ -64,7 +64,9 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
   const [showNotesEditor, setShowNotesEditor] = useState(false);
   const [notesText, setNotesText] = useState(recipe.notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [newIngredient, setNewIngredient] = useState('');
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const newIngredientRef = useRef<HTMLInputElement>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const scaleFactor = baseServings > 0 ? currentServings / baseServings : 1;
@@ -112,9 +114,25 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
     return () => document.removeEventListener('visibilitychange', handler);
   }, [cookMode, enableWakeLock]);
 
+  function newId() { return Math.random().toString(36).slice(2, 10); }
+
   async function toggleIngredient(id: string, checked: boolean) {
     const updated = recipe.ingredients.map(i => i.id === id ? { ...i, checked } : i);
     await updateRecipe(recipe.id, { ingredients: updated });
+  }
+
+  async function removeIngredient(id: string) {
+    const updated = recipe.ingredients.filter(i => i.id !== id);
+    await updateRecipe(recipe.id, { ingredients: updated });
+  }
+
+  async function addIngredient() {
+    const text = newIngredient.trim();
+    if (!text) return;
+    const updated = [...recipe.ingredients, { id: newId(), text, checked: false }];
+    await updateRecipe(recipe.id, { ingredients: updated });
+    setNewIngredient('');
+    newIngredientRef.current?.focus();
   }
 
   async function clearChecks() {
@@ -297,8 +315,7 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
           </div>
 
           {/* Ingredients */}
-          {recipe.ingredients.length > 0 && (
-            <section className="px-5 py-4 border-t border-stone-100">
+          <section className="px-5 py-4 border-t border-stone-100">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-stone-700">
                   Ingredients
@@ -314,10 +331,10 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
                   </button>
                 )}
               </div>
-              <ul className="space-y-2">
+              <ul className="space-y-2 mb-3">
                 {recipe.ingredients.map(ing => (
-                  <li key={ing.id}>
-                    <label className="flex items-start gap-3 cursor-pointer">
+                  <li key={ing.id} className="flex items-start gap-2 group">
+                    <label className="flex items-start gap-3 cursor-pointer flex-1 min-w-0">
                       <input
                         type="checkbox"
                         checked={ing.checked}
@@ -328,11 +345,37 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
                         {scaleIngredient(ing.text, scaleFactor)}
                       </span>
                     </label>
+                    <button
+                      onClick={() => removeIngredient(ing.id)}
+                      className="shrink-0 mt-0.5 text-stone-200 active:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove ingredient"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
                   </li>
                 ))}
               </ul>
+              <div className="flex gap-2">
+                <input
+                  ref={newIngredientRef}
+                  type="text"
+                  value={newIngredient}
+                  onChange={e => setNewIngredient(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addIngredient()}
+                  placeholder="Add ingredient…"
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"
+                />
+                <button
+                  onClick={addIngredient}
+                  disabled={!newIngredient.trim()}
+                  className="bg-stone-100 text-stone-700 px-3 py-2 rounded-xl text-sm font-medium active:bg-stone-200 disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
             </section>
-          )}
 
           {/* Instructions */}
           {recipe.instructions.length > 0 && (
