@@ -15,6 +15,7 @@ export interface Recipe {
   servings: string;
   cookTime: string;
   notes: string;
+  rating?: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

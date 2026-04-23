@@ -59,6 +59,12 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
   const baseServings = parseBaseServings(recipe.servings);
   const [currentServings, setCurrentServings] = useState(baseServings || 1);
   const [cookMode, setCookMode] = useState(false);
+  const [rating, setRating] = useState(recipe.rating ?? 0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [showNotesEditor, setShowNotesEditor] = useState(false);
+  const [notesText, setNotesText] = useState(recipe.notes ?? '');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const scaleFactor = baseServings > 0 ? currentServings / baseServings : 1;
@@ -71,7 +77,10 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
         setCookMode(true);
       } catch {
         // Wake lock denied (e.g. low battery) — fail silently
+        setCookMode(true);
       }
+    } else {
+      setCookMode(true);
     }
   }, []);
 
@@ -84,19 +93,14 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
   }, []);
 
   async function toggleCookMode() {
-    if (cookMode) {
-      await disableWakeLock();
-    } else {
-      await enableWakeLock();
-    }
+    if (cookMode) await disableWakeLock();
+    else await enableWakeLock();
   }
 
-  // Release wake lock when modal closes
   useEffect(() => {
     return () => { disableWakeLock(); };
   }, [disableWakeLock]);
 
-  // Re-acquire wake lock if page becomes visible again (e.g. tab switch)
   useEffect(() => {
     if (!cookMode) return;
     const handler = async () => {
@@ -116,6 +120,25 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
   async function clearChecks() {
     const updated = recipe.ingredients.map(i => ({ ...i, checked: false }));
     await updateRecipe(recipe.id, { ingredients: updated });
+  }
+
+  async function handleRating(star: number) {
+    const newRating = rating === star ? 0 : star; // tap same star to clear
+    setRating(newRating);
+    await updateRecipe(recipe.id, { rating: newRating });
+  }
+
+  async function saveNotes() {
+    setSavingNotes(true);
+    await updateRecipe(recipe.id, { notes: notesText });
+    setSavingNotes(false);
+    setShowNotesEditor(false);
+  }
+
+  function handleOpenNotes() {
+    setNotesText(recipe.notes ?? '');
+    setShowNotesEditor(true);
+    setTimeout(() => notesRef.current?.focus(), 50);
   }
 
   function handleBackdrop(e: React.MouseEvent) {
@@ -140,7 +163,7 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
         {/* Cook mode banner */}
         {cookMode && (
           <div className="shrink-0 bg-orange-500 text-white text-xs font-medium text-center py-2 rounded-t-2xl sm:rounded-t-2xl flex items-center justify-center gap-2">
-            <span>🔆 Cook mode — screen staying on</span>
+            <span>🔆 Screen staying on</span>
             <button onClick={toggleCookMode} className="underline opacity-80">Turn off</button>
           </div>
         )}
@@ -173,7 +196,31 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
                 </svg>
               </button>
             )}
-            <h2 className="text-xl font-bold text-stone-800 leading-snug mb-3">{recipe.title}</h2>
+
+            {/* Title row with star rating */}
+            <div className="flex items-start gap-3 mb-3">
+              <h2 className="flex-1 text-xl font-bold text-stone-800 leading-snug">{recipe.title}</h2>
+              <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button
+                    key={star}
+                    onClick={() => handleRating(star)}
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    className="p-0.5 active:scale-110 transition-transform"
+                    aria-label={`Rate ${star} star${star !== 1 ? 's' : ''}`}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" strokeWidth={1.5}
+                      fill={(hoverRating || rating) >= star ? 'currentColor' : 'none'}
+                      stroke="currentColor"
+                      className={(hoverRating || rating) >= star ? 'text-amber-400' : 'text-stone-300'}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Meta row */}
             <div className="flex flex-wrap items-center gap-3 text-sm text-stone-500 mb-3">
@@ -197,25 +244,16 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
                     <button
                       onClick={() => setCurrentServings(s => Math.max(1, s - 1))}
                       className="w-6 h-6 rounded flex items-center justify-center text-stone-500 active:bg-stone-200 font-bold text-base leading-none"
-                    >
-                      −
-                    </button>
-                    <span className="text-sm font-semibold text-stone-700 min-w-[1.5rem] text-center">
-                      {currentServings}
-                    </span>
+                    >−</button>
+                    <span className="text-sm font-semibold text-stone-700 min-w-[1.5rem] text-center">{currentServings}</span>
                     <button
                       onClick={() => setCurrentServings(s => s + 1)}
                       className="w-6 h-6 rounded flex items-center justify-center text-stone-500 active:bg-stone-200 font-bold text-base leading-none"
-                    >
-                      +
-                    </button>
+                    >+</button>
                   </div>
                   <span className="text-stone-400">servings</span>
                   {scaleFactor !== 1 && (
-                    <button
-                      onClick={() => setCurrentServings(baseServings)}
-                      className="text-xs text-orange-500 font-medium"
-                    >
+                    <button onClick={() => setCurrentServings(baseServings)} className="text-xs text-orange-500 font-medium">
                       reset
                     </button>
                   )}
@@ -232,6 +270,18 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
                   Source
                 </a>
               )}
+            </div>
+
+            {/* Cook mode toggle */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm text-stone-500">Cook mode</span>
+              <button
+                onClick={toggleCookMode}
+                className={`relative w-10 h-6 rounded-full transition-colors ${cookMode ? 'bg-orange-500' : 'bg-stone-200'}`}
+                aria-label="Toggle cook mode"
+              >
+                <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${cookMode ? 'translate-x-5' : 'translate-x-1'}`} />
+              </button>
             </div>
 
             {/* Tags */}
@@ -302,10 +352,39 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
           )}
 
           {/* Notes */}
-          {recipe.notes && (
+          {(recipe.notes || showNotesEditor) && (
             <section className="px-5 py-4 border-t border-stone-100">
               <h3 className="font-bold text-stone-700 mb-2">Notes</h3>
-              <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap">{recipe.notes}</p>
+              {showNotesEditor ? (
+                <div className="space-y-2">
+                  <textarea
+                    ref={notesRef}
+                    value={notesText}
+                    onChange={e => setNotesText(e.target.value)}
+                    rows={4}
+                    placeholder="Add your notes, tweaks, tips…"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowNotesEditor(false)}
+                      className="flex-1 py-2 rounded-xl border border-stone-200 text-stone-500 text-sm"
+                    >Cancel</button>
+                    <button
+                      onClick={saveNotes}
+                      disabled={savingNotes}
+                      className="flex-1 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium disabled:opacity-50"
+                    >{savingNotes ? 'Saving…' : 'Save'}</button>
+                  </div>
+                </div>
+              ) : (
+                <p
+                  onClick={handleOpenNotes}
+                  className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap cursor-pointer active:text-stone-800"
+                >
+                  {recipe.notes}
+                </p>
+              )}
             </section>
           )}
 
@@ -323,13 +402,13 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
             </svg>
           </button>
           <button
-            onClick={toggleCookMode}
-            className={`py-3 px-4 rounded-xl border font-medium text-sm transition-colors
-              ${cookMode
-                ? 'bg-orange-500 text-white border-orange-500'
-                : 'border-stone-200 text-stone-500 active:bg-stone-50'}`}
+            onClick={handleOpenNotes}
+            className="py-3 px-4 rounded-xl border border-stone-200 text-stone-400 active:bg-stone-50 active:text-stone-600"
+            aria-label="Add notes"
           >
-            🔆
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" d="M16.862 4.487a2.032 2.032 0 1 1 2.872 2.872L7.5 19.613l-4 1 1-4 12.362-12.126Z" />
+            </svg>
           </button>
           <button
             onClick={onEdit}
