@@ -125,6 +125,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [fetchingImage, setFetchingImage] = useState(false);
   const [newIngredient, setNewIngredient] = useState('');
   const [newInstruction, setNewInstruction] = useState('');
   const [newTag, setNewTag] = useState('');
@@ -246,6 +247,27 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
       ...prev,
       instructions: prev.instructions.map((s, i) => i === idx ? text : s),
     }));
+  }
+
+  async function fetchImage() {
+    const url = form.sourceUrl || urlInput;
+    if (!url.trim()) return;
+    setFetchingImage(true);
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const json = await res.json();
+      if (json.success && json.data.image) {
+        setForm(p => ({ ...p, image: json.data.image }));
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setFetchingImage(false);
+    }
   }
 
   async function handleSave() {
@@ -375,13 +397,27 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
             <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5">
               Image URL
             </label>
-            <input
-              type="url"
-              value={form.image}
-              onChange={e => setForm(p => ({ ...p, image: e.target.value }))}
-              placeholder="https://…"
-              className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-            />
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={form.image}
+                onChange={e => setForm(p => ({ ...p, image: e.target.value }))}
+                placeholder="https://…"
+                className="flex-1 border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+              {(form.sourceUrl || urlInput) && (
+                <button
+                  onClick={fetchImage}
+                  disabled={fetchingImage}
+                  className="shrink-0 border border-stone-200 text-stone-500 px-3 py-2.5 rounded-xl text-sm disabled:opacity-50 active:bg-stone-50 flex items-center gap-1.5"
+                  title="Try to fetch image from source URL"
+                >
+                  {fetchingImage
+                    ? <span className="w-3.5 h-3.5 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" />
+                    : '🖼️'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Title */}
