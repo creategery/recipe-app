@@ -277,10 +277,10 @@ export default function RecipeDetailModal({ recipe, onClose, onEdit, onDelete }:
               <span className="text-sm text-stone-500">Cook mode</span>
               <button
                 onClick={toggleCookMode}
-                className={`relative w-10 h-6 rounded-full transition-colors ${cookMode ? 'bg-orange-500' : 'bg-stone-200'}`}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${cookMode ? 'bg-orange-500' : 'bg-stone-200'}`}
                 aria-label="Toggle cook mode"
               >
-                <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${cookMode ? 'translate-x-5' : 'translate-x-1'}`} />
+                <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-200 ${cookMode ? 'left-6' : 'left-1'}`} />
               </button>
             </div>
 
