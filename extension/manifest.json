@@ -19,8 +19,8 @@
     "default_title": "Save to Recipease"
   },
   "icons": {
-    "16": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text x='2' y='14' font-size='16'>🍳</text></svg>",
-    "48": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><text x='4' y='42' font-size='48'>🍳</text></svg>",
-    "128": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><text x='16' y='112' font-size='128'>🍳</text></svg>"
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
   }
 }
