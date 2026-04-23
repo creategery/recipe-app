@@ -85,10 +85,61 @@ async function fetchHtml(url: string): Promise<string> {
   return proxyRes.text();
 }
 
+// Selectors for the main article body on blog-style sites
+const CONTENT_SELECTORS = [
+  'article', '.entry-content', '.post-content', '.recipe-content',
+  'main', '.content', '#content', '.post-body',
+];
+
+function htmlFallbackParse($: ReturnType<typeof cheerio.load>, result: ScrapedData) {
+  // Find main content area selector
+  let contentSel = 'body';
+  for (const sel of CONTENT_SELECTORS) {
+    if ($(sel).length) { contentSel = sel; break; }
+  }
+  const $content = $(contentSel);
+
+  // Walk headings to find ingredient/instruction sections
+  const ingredientRx = /ingredient/i;
+  const instructionRx = /direction|instruction|method|preparation|how to/i;
+
+  $content.find('h1,h2,h3,h4,h5,h6').each((_, heading) => {
+    const headingText = $(heading).text();
+    const isIngredients = ingredientRx.test(headingText);
+    const isInstructions = instructionRx.test(headingText);
+    if (!isIngredients && !isInstructions) return;
+
+    // Collect sibling text until the next heading
+    const items: string[] = [];
+    let node = $(heading).next();
+    while (node.length && !node.is('h1,h2,h3,h4,h5,h6')) {
+      // Check list items first, then paragraph text
+      const lis = node.find('li');
+      if (lis.length) {
+        lis.each((_, li) => {
+          const t = $(li).text().trim();
+          if (t) items.push(t);
+        });
+      } else {
+        // Split paragraph text by newlines / <br> tags
+        node.find('br').replaceWith('\n');
+        const text = node.text();
+        text.split('\n').map(l => l.trim()).filter(Boolean).forEach(l => items.push(l));
+      }
+      node = node.next();
+    }
+
+    const cleaned = items.filter(t => t.length > 2);
+    if (isIngredients && !result.ingredients?.length) result.ingredients = cleaned;
+    if (isInstructions && !result.instructions?.length) result.instructions = cleaned;
+  });
+}
+
 function parseHtml(html: string): ScrapedData {
   const $ = cheerio.load(html);
   const result: ScrapedData = {};
 
+  // 1. Try JSON-LD structured data
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const json = JSON.parse($(el).html() || '');
@@ -118,6 +169,7 @@ function parseHtml(html: string): ScrapedData {
     }
   });
 
+  // 2. OG / meta fallbacks for title + image
   if (!result.image) {
     result.image =
       $('meta[property="og:image"]').attr('content') ||
@@ -126,7 +178,12 @@ function parseHtml(html: string): ScrapedData {
   }
   if (!result.title) {
     result.title =
-      $('meta[property="og:title"]').attr('content') || $('title').text() || '';
+      $('meta[property="og:title"]').attr('content') || $('title').text().split('|')[0].trim() || '';
+  }
+
+  // 3. HTML fallback for blogs without schema (e.g. pureella.com)
+  if (!result.ingredients?.length && !result.instructions?.length) {
+    htmlFallbackParse($, result);
   }
 
   return result;
