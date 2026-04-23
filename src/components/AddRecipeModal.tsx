@@ -44,10 +44,22 @@ function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientText
       continue;
     }
     if (mode === 'ingredients') {
-      if (/^[\d½¼¾⅓⅔⅛⅜⅝⅞]/.test(line) ||
-          /^(a |an |one |two |three |four |five |six |pinch|dash|handful|small|large|medium)/i.test(line)) {
-        ingredientTexts.push(line);
-      }
+      const isIngredient =
+        // Must start with a number or fraction character
+        (/^[\d½¼¾⅓⅔⅛⅜⅝⅞]/.test(line) ||
+         /^(a |an |one |two |three |four |five |six |pinch|dash|handful|small|large|medium)/i.test(line)) &&
+        // Must contain a food/unit word — not just a bare number or time/multiplier
+        /[a-zA-Z]{2,}/.test(line) &&
+        // Exclude time values like "5 mins", "4 hrs 20 mins"
+        !/^\d[\d\s]*(min|hour|hr|sec)/i.test(line) &&
+        // Exclude multipliers like "1x", "2x", "1/2x"
+        !/^[\d./]+x$/i.test(line) &&
+        // Exclude standalone numbers or ratings like "4.8", "108"
+        !/^\d+(\.\d+)?$/.test(line) &&
+        // Must be a reasonable ingredient length
+        line.length > 3;
+
+      if (isIngredient) ingredientTexts.push(line);
     }
     if (mode === 'instructions') {
       const step = line.replace(/^\d+[.)]\s*/, '').trim();
