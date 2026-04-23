@@ -171,7 +171,10 @@ function parseHtml(html: string): ScrapedData {
 
         if (recipe.image) {
           if (typeof recipe.image === 'string') result.image = recipe.image;
-          else if (Array.isArray(recipe.image)) result.image = recipe.image[0];
+          else if (Array.isArray(recipe.image)) {
+            const first = recipe.image[0];
+            result.image = typeof first === 'string' ? first : (first?.url || first?.contentUrl || '');
+          }
           else if (recipe.image?.url) result.image = recipe.image.url;
         }
 

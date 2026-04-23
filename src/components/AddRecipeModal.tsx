@@ -405,7 +405,7 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
                 placeholder="https://…"
                 className="flex-1 border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
               />
-              {(form.sourceUrl || urlInput) && (
+              {!!(form.sourceUrl || urlInput) && (
                 <button
                   onClick={fetchImage}
                   disabled={fetchingImage}
