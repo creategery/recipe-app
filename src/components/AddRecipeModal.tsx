@@ -151,7 +151,14 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
         applyScraped(json.data);
         setForm(prev => ({ ...prev, sourceUrl: urlInput.trim() }));
       } else {
-        setScrapeError(json.error ?? 'Could not fetch that URL');
+        const blockedSites = /foodnetwork|nytimes|epicurious|bonappetit|food\.com|delish|tasty/i;
+        const isBlocked = blockedSites.test(urlInput);
+        setScrapeError(
+          isBlocked
+            ? 'This site blocks automatic fetching. Use "Paste text" below — copy the recipe from the page and paste it here.'
+            : (json.error ?? 'Could not fetch that URL — try the paste option below.')
+        );
+        setShowPaste(true);
       }
     } catch {
       setScrapeError('Network error — check your connection');
