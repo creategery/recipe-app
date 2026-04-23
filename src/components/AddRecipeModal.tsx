@@ -309,9 +309,14 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
               <button
                 onClick={fetchUrl}
                 disabled={scraping || !urlInput.trim()}
-                className="shrink-0 bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 active:bg-orange-600"
+                className="shrink-0 bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 active:bg-orange-600 flex items-center gap-1.5"
               >
-                {scraping ? '…' : 'Fetch'}
+                {scraping ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Fetching
+                  </>
+                ) : 'Fetch'}
               </button>
             </div>
             {scrapeError && <p className="text-xs text-red-500 mt-1.5">{scrapeError}</p>}

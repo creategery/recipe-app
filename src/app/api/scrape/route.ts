@@ -52,6 +52,39 @@ function extractInstructions(raw: any): string[] {
   return [];
 }
 
+// For domains that block scraping but have clean print views
+const PRINT_URL_TRANSFORMS: { test: RegExp; transform: (url: string) => string }[] = [
+  {
+    // foodnetwork.com/recipes/... → append /print-page if not already present
+    test: /foodnetwork\.com\/recipes\//,
+    transform: (url) => {
+      const clean = url.replace(/\/print(-page)?\/?$/, '');
+      return clean.replace(/(\?.*)?$/, '/print-page');
+    },
+  },
+  {
+    // allrecipes.com/recipe/... → append /print
+    test: /allrecipes\.com\/recipe\//,
+    transform: (url) => url.replace(/\/print\/?$/, '').replace(/(\?.*)?$/, '/print'),
+  },
+  {
+    // simplyrecipes.com → add ?print=true
+    test: /simplyrecipes\.com/,
+    transform: (url) => {
+      const u = new URL(url);
+      u.searchParams.set('print', 'true');
+      return u.toString();
+    },
+  },
+];
+
+function getPrintUrl(url: string): string | null {
+  for (const { test, transform } of PRINT_URL_TRANSFORMS) {
+    if (test.test(url)) return transform(url);
+  }
+  return null;
+}
+
 const BROWSER_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -62,24 +95,37 @@ const BROWSER_HEADERS = {
   Pragma: 'no-cache',
 };
 
-async function fetchHtml(url: string): Promise<string> {
-  // 1. Direct fetch
+async function tryFetch(url: string, timeout = 12000): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: BROWSER_HEADERS,
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(timeout),
     });
     if (res.ok) {
       const html = await res.text();
-      // Make sure we got actual HTML, not a bot-challenge page
       if (html.includes('<html') && html.length > 2000) return html;
     }
   } catch {
-    // fall through to proxy
+    // ignore
+  }
+  return null;
+}
+
+async function fetchHtml(url: string): Promise<string> {
+  // 1. Try print URL first for known domains (cleaner HTML, less bot-blocking)
+  const printUrl = getPrintUrl(url);
+  if (printUrl) {
+    const html = await tryFetch(printUrl);
+    if (html) return html;
   }
 
-  // 2. AllOrigins proxy fallback (handles many sites that block server-side requests)
-  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+  // 2. Direct fetch of original URL
+  const direct = await tryFetch(url);
+  if (direct) return direct;
+
+  // 3. AllOrigins proxy fallback — try print URL through proxy first if available
+  const proxyTarget = printUrl ?? url;
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(proxyTarget)}`;
   const proxyRes = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
   if (!proxyRes.ok) throw new Error(`Could not fetch page (HTTP ${proxyRes.status})`);
   return proxyRes.text();
