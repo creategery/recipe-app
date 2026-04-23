@@ -4,13 +4,19 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Recipe, RecipeFormData, ScrapedData } from '@/types/recipe';
 
 // Stop parsing when we hit these sections
-const STOP_SECTIONS = /^(nutrition facts?|nutrition info|reviews?|ratings?|comments?|community|ask the|related recipes?|you (may|might) also|more recipes?|about (this|the) recipe|did you (make|try)|how did it turn out|advertisement|similar recipes?|popular recipes?|most.saved|you.ll also love|most helpful)/i;
+const STOP_SECTIONS = /^(nutrition facts?|nutrition info|reviews?|ratings?|comments?|community|ask the|related recipes?|you (may|might) also|more recipes?|about (this|the) recipe|did you (make|try)|how did it turn out|advertisement|similar recipes?|popular recipes?|most.saved|you.ll also love|most helpful|my private notes?|looking for something|what.s cooking|shop with us|subscribe to our|related pages)/i;
 
-// Lines to skip entirely
-const JUNK_LINE = /(home cooks? made it|dotdash|meredith food studio|allrecipes|food network|serious eats|show full|nutrition label|\d+ rating|\d+ review|jump to|print recipe|save recipe|pin recipe|keep screen awake|submitted by|updated on|get the magazine|why you.ll love|read more|i made it|add photo)/i;
+// Lines to skip entirely regardless of mode
+const JUNK_LINE = /(home cooks? made it|dotdash|meredith food studio|allrecipes|food network|serious eats|show full|nutrition label|\d+ rating|\d+ review|jump to|print recipe|save recipe|pin recipe|keep screen awake|submitted by|updated on|get the magazine|why you.ll love|read more|i made it|add photo|deselect all|get ingredients|add to cart|watch how to make|replay video|please refresh|continue to have issues)/i;
 
-// Image captions between Allrecipes steps (start with "A/An" + capital, or "Ingredients to")
-const IMAGE_CAPTION = /^(A |An )[A-Z]|^Ingredients to |^Original recipe/i;
+// Single ALL-CAPS words that are UI elements (e.g. "WATCH")
+const ALL_CAPS_WORD = /^[A-Z]{2,10}$/;
+
+// Image captions and UI blurbs
+const IMAGE_CAPTION = /^(A |An )[A-Z]|^Ingredients to |^Original recipe|as seen on/i;
+
+// Lines that are clearly not ingredients when in ingredient mode
+const NON_INGREDIENT = /^(deselect|get ingredients|add to|watch|prev |next |home |recipes?$|shows?$|chefs?$)/i;
 
 function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientTexts: string[], parsedNotes: string }> {
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
@@ -48,22 +54,25 @@ function parseRecipeText(raw: string): Partial<RecipeFormData & { ingredientText
     }
 
     if (mode === 'ingredients') {
-      const isIngredient =
-        (/^[\d½¼¾⅓⅔⅛⅜⅝⅞]/.test(line) ||
-         /^(a |an |one |two |three |four |five |six |pinch|dash|handful|small|large|medium)/i.test(line)) &&
-        /[a-zA-Z]{2,}/.test(line) &&
-        !/^\d[\d\s]*(min|hour|hr|sec)/i.test(line) &&
-        !/^[\d./]+x$/i.test(line) &&
-        !/^\d+(\.\d+)?$/.test(line) &&
-        line.length > 3;
-      if (isIngredient) ingredientTexts.push(line);
+      // In ingredient mode: accept most lines, just reject obvious non-food content
+      const skip =
+        NON_INGREDIENT.test(line) ||
+        ALL_CAPS_WORD.test(line) ||
+        !/[a-zA-Z]{2,}/.test(line) ||          // must have at least one word
+        !/^\d+(\.\d+)?$/.test(line) === false || // bare numbers (ratings)
+        /^\d[\d\s]*(min|hour|hr|sec)/i.test(line) || // time values
+        /^[\d./]+x$/i.test(line) ||             // multipliers (1x, 2x)
+        line.length < 3;
+      if (!skip) ingredientTexts.push(line);
     }
 
     if (mode === 'instructions') {
-      // Skip image captions and photo credits
       if (IMAGE_CAPTION.test(line)) continue;
-      // Skip studio/credit lines (3-4 capitalized words)
-      if (/^([A-Z][a-zA-Z]+ ){2,3}[A-Z][a-zA-Z]+$/.test(line)) continue;
+      if (ALL_CAPS_WORD.test(line)) continue;
+      // Skip studio/credit lines (2-4 title-case words, no punctuation)
+      if (/^([A-Z][a-zA-Z]+ ){1,3}[A-Z][a-zA-Z]+$/.test(line)) continue;
+      // Skip "Watch how to…" type lines
+      if (/^watch\b/i.test(line)) continue;
       const step = line.replace(/^\d+[.)]\s*/, '').trim();
       if (step.length > 20) instructions.push(step);
     }
