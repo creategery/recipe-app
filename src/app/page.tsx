@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { subscribeToRecipes, addRecipe, updateRecipe, deleteRecipe } from '@/lib/firestore';
 import type { Recipe, RecipeFormData } from '@/types/recipe';
@@ -18,6 +18,9 @@ export default function Home() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'az' | 'za' | 'rating'>('newest');
+  const [showSort, setShowSort] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -27,6 +30,15 @@ export default function Home() {
     return subscribeToRecipes(setRecipes);
   }, [user]);
 
+  useEffect(() => {
+    if (!showSort) return;
+    function handleClick(e: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setShowSort(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showSort]);
+
   const allTags = useMemo(() => {
     const set = new Set<string>();
     recipes.forEach(r => r.tags.forEach(t => set.add(t)));
@@ -34,7 +46,7 @@ export default function Home() {
   }, [recipes]);
 
   const filteredRecipes = useMemo(() => {
-    return recipes.filter(recipe => {
+    const filtered = recipes.filter(recipe => {
       if (selectedTags.length > 0 && !selectedTags.every(t => recipe.tags.includes(t))) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -46,7 +58,16 @@ export default function Home() {
       }
       return true;
     });
-  }, [recipes, selectedTags, searchQuery]);
+    return [...filtered].sort((a, b) => {
+      switch (sort) {
+        case 'oldest': return a.createdAt.getTime() - b.createdAt.getTime();
+        case 'az':     return a.title.localeCompare(b.title);
+        case 'za':     return b.title.localeCompare(a.title);
+        case 'rating': return (b.rating ?? 0) - (a.rating ?? 0);
+        default:       return b.createdAt.getTime() - a.createdAt.getTime(); // newest
+      }
+    });
+  }, [recipes, selectedTags, searchQuery, sort]);
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -101,17 +122,47 @@ export default function Home() {
         onToggle={toggleTag}
       />
 
-      {selectedTags.length > 0 && (
-        <div className="px-4 pb-1 flex items-center gap-2">
-          <span className="text-xs text-stone-400">{filteredRecipes.length} result{filteredRecipes.length !== 1 ? 's' : ''}</span>
+      {/* Sort / count bar */}
+      <div className="px-4 py-2 flex items-center justify-between">
+        <span className="text-xs text-stone-400">
+          {filteredRecipes.length} recipe{filteredRecipes.length !== 1 ? 's' : ''}
+          {selectedTags.length > 0 && (
+            <button onClick={() => setSelectedTags([])} className="ml-2 text-orange-500 font-medium">
+              Clear filters
+            </button>
+          )}
+        </span>
+        <div className="relative" ref={sortRef}>
           <button
-            onClick={() => setSelectedTags([])}
-            className="text-xs text-orange-500 font-medium"
+            onClick={() => setShowSort(s => !s)}
+            className="flex items-center gap-1 text-xs text-stone-500 font-medium bg-stone-100 px-3 py-1.5 rounded-lg active:bg-stone-200"
           >
-            Clear filters
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" d="M3 6h18M6 12h12M9 18h6" />
+            </svg>
+            {{ newest: 'Newest', oldest: 'Oldest', az: 'A → Z', za: 'Z → A', rating: 'Top rated' }[sort]}
           </button>
+          {showSort && (
+            <div className="absolute right-0 top-8 bg-white rounded-xl shadow-lg border border-stone-100 py-1 w-36 z-20">
+              {([
+                ['newest', 'Newest first'],
+                ['oldest', 'Oldest first'],
+                ['az',     'A → Z'],
+                ['za',     'Z → A'],
+                ['rating', 'Top rated'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => { setSort(key); setShowSort(false); }}
+                  className={`w-full text-left px-4 py-2 text-sm ${sort === key ? 'text-orange-500 font-medium' : 'text-stone-600'} active:bg-stone-50`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <RecipeGrid recipes={filteredRecipes} onRecipeClick={setSelectedRecipe} />
 
