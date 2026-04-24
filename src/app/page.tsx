@@ -13,6 +13,7 @@ import TagFilterBar from '@/components/TagFilterBar';
 import RecipeGrid from '@/components/RecipeGrid';
 import AddRecipeModal from '@/components/AddRecipeModal';
 import RecipeDetailModal from '@/components/RecipeDetailModal';
+import ManageTagsModal from '@/components/ManageTagsModal';
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -26,6 +27,7 @@ export default function Home() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showManageTags, setShowManageTags] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -87,6 +89,16 @@ export default function Home() {
     setEditingRecipe(null);
   }
 
+  async function removeTags(tagsToRemove: string[]) {
+    const toRemove = new Set(tagsToRemove);
+    for (const recipe of recipes) {
+      const filtered = recipe.tags.filter(t => !toRemove.has(t));
+      if (filtered.length !== recipe.tags.length) {
+        await updateRecipe(recipe.id, { tags: filtered });
+      }
+    }
+  }
+
   async function retagAllRecipes() {
     setRetagging(true);
     for (const recipe of recipes) {
@@ -134,6 +146,7 @@ export default function Home() {
         onAddRecipe={() => setShowAddModal(true)}
         onRetagRecipes={retagAllRecipes}
         retagging={retagging}
+        onManageTags={() => setShowManageTags(true)}
       />
 
       <TagFilterBar
@@ -192,6 +205,14 @@ export default function Home() {
           onSave={handleSave}
           initialRecipe={editingRecipe ?? undefined}
           existingTags={allTags}
+        />
+      )}
+
+      {showManageTags && (
+        <ManageTagsModal
+          tags={allTags}
+          onClose={() => setShowManageTags(false)}
+          onRemove={removeTags}
         />
       )}
 

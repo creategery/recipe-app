@@ -10,9 +10,10 @@ interface HeaderProps {
   onAddRecipe: () => void;
   onRetagRecipes: () => void;
   retagging: boolean;
+  onManageTags: () => void;
 }
 
-export default function Header({ searchQuery, onSearchChange, onAddRecipe, onRetagRecipes, retagging }: HeaderProps) {
+export default function Header({ searchQuery, onSearchChange, onAddRecipe, onRetagRecipes, retagging, onManageTags }: HeaderProps) {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [showSearch, setShowSearch] = useState(false);
@@ -99,6 +100,12 @@ export default function Header({ searchQuery, onSearchChange, onAddRecipe, onRet
                     {retagging
                       ? <><span className="w-3.5 h-3.5 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" /> Re-tagging…</>
                       : '🏷️ Auto-tag all recipes'}
+                  </button>
+                  <button
+                    onClick={() => { setShowMenu(false); onManageTags(); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-stone-600 active:bg-stone-50"
+                  >
+                    🗑️ Manage tags
                   </button>
                   <hr className="border-stone-100" />
                   <button
