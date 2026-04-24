@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { subscribeToRecipes, addRecipe, updateRecipe, deleteRecipe } from '@/lib/firestore';
 import type { Recipe, RecipeFormData } from '@/types/recipe';
+import { autoDetectTags } from '@/lib/autoTags';
 import SignIn from '@/components/SignIn';
 import Header from '@/components/Header';
 import TagFilterBar from '@/components/TagFilterBar';
@@ -20,6 +21,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'az' | 'za' | 'rating'>('newest');
   const [showSort, setShowSort] = useState(false);
+  const [retagging, setRetagging] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
@@ -85,6 +87,22 @@ export default function Home() {
     setEditingRecipe(null);
   }
 
+  async function retagAllRecipes() {
+    setRetagging(true);
+    for (const recipe of recipes) {
+      const detected = autoDetectTags(
+        recipe.title,
+        recipe.ingredients.map(i => i.text),
+        recipe.instructions,
+      );
+      const merged = Array.from(new Set([...recipe.tags, ...detected]));
+      if (merged.length !== recipe.tags.length || merged.some(t => !recipe.tags.includes(t))) {
+        await updateRecipe(recipe.id, { tags: merged });
+      }
+    }
+    setRetagging(false);
+  }
+
   async function handleDelete() {
     if (!selectedRecipe) return;
     if (!confirm(`Delete "${selectedRecipe.title}"?`)) return;
@@ -114,6 +132,8 @@ export default function Home() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onAddRecipe={() => setShowAddModal(true)}
+        onRetagRecipes={retagAllRecipes}
+        retagging={retagging}
       />
 
       <TagFilterBar
