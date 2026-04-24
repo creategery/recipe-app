@@ -14,7 +14,7 @@ const TAG_RULES: { tag: string; keywords: RegExp }[] = [
   { tag: 'Gluten-Free',   keywords: /gluten.?free|celiac|no gluten|almond flour|rice flour|tapioca flour/i },
   { tag: 'Slow Cooker',   keywords: /slow cooker|crockpot|crock.?pot|low.*slow|braised.*hours/i },
   { tag: 'Grilling',      keywords: /grill|barbecue|bbq|charcoal|smoker|smoked|smoke ring|indirect heat/i },
-  { tag: 'Quick',         keywords: /15.minute|20.minute|30.minute|quick|fast|easy weeknight|weeknight|under 30|speedy/i },
+  { tag: 'Quick',         keywords: /\b(15|20|30)-minute\b|quick (and easy|dinner|meal|recipe)|fast (dinner|meal|recipe)|\bunder 30 min|\bspeedy\b/i },
 ];
 
 export function autoDetectTags(title: string, ingredients: string[], instructions: string[]): string[] {

@@ -50,7 +50,7 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
           </div>
         )}
 
-        {(recipe.cookTime || recipe.servings) && (
+        {(recipe.cookTime || recipe.servings || recipe.ingredients.length > 0) && (
           <div className="flex items-center gap-2 text-[11px] text-stone-400">
             {recipe.cookTime && (
               <span className="flex items-center gap-1">
@@ -70,6 +70,15 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
                   <path strokeLinecap="round" d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
                 {recipe.servings}
+              </span>
+            )}
+            {recipe.ingredients.length > 0 && (recipe.cookTime || recipe.servings) && <span>·</span>}
+            {recipe.ingredients.length > 0 && (
+              <span className="flex items-center gap-1">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
+                </svg>
+                {recipe.ingredients.length} ing
               </span>
             )}
           </div>

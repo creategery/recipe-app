@@ -573,7 +573,21 @@ export default function AddRecipeModal({ onClose, onSave, initialRecipe, existin
                 value={newIngredient}
                 onChange={e => setNewIngredient(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addIngredient()}
-                placeholder="2 cups flour…"
+                onPaste={e => {
+                  const text = e.clipboardData.getData('text');
+                  const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+                  if (lines.length > 1) {
+                    e.preventDefault();
+                    setForm(prev => ({
+                      ...prev,
+                      ingredients: [
+                        ...prev.ingredients,
+                        ...lines.map(t => ({ id: newId(), text: t, checked: false })),
+                      ],
+                    }));
+                  }
+                }}
+                placeholder="2 cups flour… (paste multiple lines to add all at once)"
                 className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400"
               />
               <button
